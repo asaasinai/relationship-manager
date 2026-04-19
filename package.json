@@ -23,7 +23,8 @@
     "node-cron": "^3.0.2",
     "dotenv": "^16.3.1",
     "date-fns": "^2.30.0",
-    "axios": "^1.6.2"
+    "axios": "^1.6.2",
+    "@anthropic-ai/sdk": "^0.24.3"
   },
   "devDependencies": {
     "prisma": "^5.7.0",
