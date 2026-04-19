@@ -98,6 +98,11 @@ function parseFlexibleDate(dateStr) {
   return null;
 }
 
+// Normalize name for duplicate checking
+function normalizeName(name) {
+  return name.toLowerCase().trim();
+}
+
 // /start - Register user
 bot.start(async (ctx) => {
   const telegramId = ctx.from.id.toString();
@@ -246,6 +251,7 @@ bot.on('text', async (ctx) => {
   try {
     const user = await prisma.user.findUnique({
       where: { telegramId },
+      include: { relationships: true },
     });
 
     if (!user) {
@@ -262,9 +268,20 @@ bot.on('text', async (ctx) => {
       return ctx.reply('❓ I didn\'t find any people to add. Try: "Add John brother May 15" or "My mom\'s birthday is Dec 10"');
     }
 
-    // Add all parsed people
+    // Check for duplicates and add all parsed people
     const results = [];
+    const duplicates = [];
+    const existingNames = new Set(user.relationships.map(r => normalizeName(r.name)));
+
     for (const person of people) {
+      const normalizedName = normalizeName(person.name);
+
+      // Check if person already exists
+      if (existingNames.has(normalizedName)) {
+        duplicates.push(`⚠️ ${person.name} (${person.relation || 'friend'}) - already exists`);
+        continue;
+      }
+
       try {
         const birthDate = person.date ? parseFlexibleDate(person.date) : null;
 
@@ -277,6 +294,7 @@ bot.on('text', async (ctx) => {
           },
         });
 
+        existingNames.add(normalizedName);
         const dateStr = birthDate && isValid(birthDate) ? birthDate.toLocaleDateString() : 'no date';
         results.push(`✅ ${person.name} (${person.relation || 'friend'}) - ${dateStr}`);
       } catch (err) {
@@ -285,11 +303,17 @@ bot.on('text', async (ctx) => {
       }
     }
 
-    const message = results.length > 0
-      ? `Added ${people.length} person${people.length !== 1 ? 's' : ''}:\n\n${results.join('\n')}`
-      : '❌ No people were added.';
+    // Build response message
+    let message = '';
+    if (results.length > 0) {
+      message += `✅ Added ${results.length} person${results.length !== 1 ? 's' : ''}:\n\n${results.join('\n')}`;
+    }
+    if (duplicates.length > 0) {
+      if (message) message += '\n\n';
+      message += `Skipped (already in your list):\n${duplicates.join('\n')}`;
+    }
 
-    ctx.reply(message);
+    ctx.reply(message || '❌ No people were added.');
   } catch (err) {
     console.error(err);
     ctx.reply('❌ Error processing message. Please try again.');
@@ -305,7 +329,7 @@ bot.catch((err, ctx) => {
 // Start bot
 bot.launch();
 
-console.log('🤖 Telegram bot started (NLP mode)...');
+console.log('🤖 Telegram bot started (NLP mode with duplicate detection)...');
 
 // Graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
